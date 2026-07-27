@@ -171,3 +171,55 @@ async def test_closed_account_excluded_from_dashboard_balance(client: AsyncClien
     summary_resp = await client.get("/api/dashboard/summary", headers=auth_headers)
     total_after = sum(float(v) for v in summary_resp.json()["total_balance"].values())
     assert total_after == 0.0
+
+
+@pytest.mark.asyncio
+async def test_archive_can_keep_or_exclude_history_and_reopen_restores_it(
+    client: AsyncClient, auth_headers
+):
+    """Archive history policy is explicit, reversible, and never deletes rows."""
+    account_resp = await client.post(
+        "/api/accounts",
+        headers=auth_headers,
+        json={"name": "Old Checking", "type": "checking", "currency": "BRL"},
+    )
+    account_id = account_resp.json()["id"]
+    transaction_resp = await client.post(
+        "/api/transactions",
+        headers=auth_headers,
+        json={
+            "account_id": account_id,
+            "description": "Old account expense",
+            "amount": "250.00",
+            "date": "2026-01-10",
+            "type": "debit",
+        },
+    )
+    assert transaction_resp.status_code == 201
+    transaction_id = transaction_resp.json()["id"]
+
+    await client.post(f"/api/accounts/{account_id}/close", headers=auth_headers)
+
+    history = await client.get("/api/transactions", headers=auth_headers)
+    assert transaction_id in {item["id"] for item in history.json()["items"]}
+
+    await client.post(f"/api/accounts/{account_id}/reopen", headers=auth_headers)
+    await client.post(
+        f"/api/accounts/{account_id}/close",
+        params={"exclude_history": "true"},
+        headers=auth_headers,
+    )
+
+    excluded_history = await client.get("/api/transactions", headers=auth_headers)
+    assert transaction_id not in {item["id"] for item in excluded_history.json()["items"]}
+
+    audit_history = await client.get(
+        "/api/transactions",
+        params={"include_closed_accounts": "true"},
+        headers=auth_headers,
+    )
+    assert transaction_id in {item["id"] for item in audit_history.json()["items"]}
+
+    await client.post(f"/api/accounts/{account_id}/reopen", headers=auth_headers)
+    restored_history = await client.get("/api/transactions", headers=auth_headers)
+    assert transaction_id in {item["id"] for item in restored_history.json()["items"]}

@@ -14,6 +14,7 @@ from app.models.category import Category
 from app.models.recurring_transaction import RecurringTransaction
 from app.schemas.dashboard import DashboardSummary, SpendingByCategory, MonthlyTrend, ProjectedTransaction, DailyBalance, BalanceHistory
 from app.services._query_filters import (
+    account_history_is_visible,
     counts_as_user_pnl,
     owner_split_offset_by_category,
     owner_split_offset_pnl,
@@ -53,11 +54,23 @@ async def _get_recurring_projections(
     if account_ids is not None and len(account_ids) == 0:
         return []
     stmt = (
-        select(RecurringTransaction)
+        select(
+            RecurringTransaction,
+            Category.name,
+            Category.color,
+            Account.name,
+            Account.display_name,
+            Account.type,
+        )
         .outerjoin(Category, RecurringTransaction.category_id == Category.id)
+        .outerjoin(Account, RecurringTransaction.account_id == Account.id)
         .where(
             RecurringTransaction.workspace_id == workspace_id,
             RecurringTransaction.is_active == True,
+            or_(
+                RecurringTransaction.account_id.is_(None),
+                Account.is_closed == False,
+            ),
             RecurringTransaction.start_date < month_end,
             or_(
                 RecurringTransaction.category_id.is_(None),
@@ -72,10 +85,10 @@ async def _get_recurring_projections(
     if account_ids:
         stmt = stmt.where(RecurringTransaction.account_id.in_(account_ids))
     result = await session.execute(stmt)
-    recurring_list = list(result.scalars().all())
+    recurring_rows = list(result.all())
 
     projections = []
-    for rec in recurring_list:
+    for rec, category_name, category_color, account_name, account_display_name, account_type in recurring_rows:
         # Compute occurrences starting from next_occurrence (skips already-created transactions)
         occurrences = get_occurrences_in_range(
             start=rec.next_occurrence,
@@ -87,11 +100,19 @@ async def _get_recurring_projections(
         )
         for occ_date in occurrences:
             projections.append({
+                "recurring_id": rec.id,
+                "description": rec.description,
+                "account_id": rec.account_id,
+                "account_name": account_display_name or account_name or "Unassigned",
+                "account_type": account_type or "unassigned",
                 "category_id": rec.category_id,
+                "category_name": category_name,
+                "category_color": category_color,
                 "amount": float(rec.amount),
                 "type": rec.type,
                 "currency": rec.currency,
                 "date": occ_date,
+                "auto_generate": rec.auto_generate,
             })
     return projections
 
@@ -164,7 +185,7 @@ async def get_summary(
         .join(Account, Transaction.account_id == Account.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             report_date >= month_start,
             report_date < month_end,
             Transaction.source != "opening_balance",
@@ -285,7 +306,7 @@ async def get_summary(
         .join(Account, Transaction.account_id == Account.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             report_date >= month_start,
             report_date < month_end,
             Transaction.source != "opening_balance",
@@ -511,7 +532,7 @@ async def get_spending_by_category(
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             Transaction.type == "debit",
             report_date >= month_start,
             report_date < month_end,
@@ -668,7 +689,7 @@ async def get_monthly_trend(
         .join(Account, Transaction.account_id == Account.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             Transaction.source != "opening_balance",
             counts_as_user_pnl(),
             *acct_filter,
@@ -975,7 +996,7 @@ async def _daily_deltas(
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             Transaction.date >= start,
             Transaction.date < end,
             Transaction.is_ignored == False,

@@ -152,11 +152,12 @@ export interface Account {
   card_level: string | null
   is_closed: boolean
   closed_at: string | null
+  exclude_from_reports: boolean
 }
 
 export interface CreditCardBill {
   id: string
-  account_id: string
+  account_id: string | null
   external_id: string
   due_date: string // YYYY-MM-DD
   total_amount: number
@@ -716,8 +717,10 @@ export interface ReportMeta {
   currency: string
   interval: string
   forecast_start_date?: string | null
+  forecast_end_date?: string | null
   baseline_active?: boolean
   baseline_lookback_days?: number | null
+  credit_card_accounting_mode?: 'cash' | 'accrual' | null
 }
 
 export interface ReportCompositionItem {
@@ -752,4 +755,25 @@ export interface ReportResponse {
   meta: ReportMeta
   composition: ReportCompositionItem[]
   category_trend: CategoryTrendItem[]
+  projection_items: CashFlowProjectionItem[]
+}
+
+export interface CashFlowProjectionItem {
+  date: string
+  description: string
+  amount: number
+  amount_primary: number
+  currency: string
+  type: 'debit' | 'credit'
+  source: 'recurring' | 'booked' | 'credit_card'
+  status: 'expected' | 'scheduled'
+  account_id: string
+  account_name: string
+  account_type: string
+  category_id: string | null
+  category_name: string | null
+  category_color: string | null
+  recurring_id: string | null
+  transaction_id: string | null
+  auto_generate: boolean | null
 }

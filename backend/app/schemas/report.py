@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from uuid import UUID
 
 
 class ReportBreakdown(BaseModel):
@@ -37,8 +38,10 @@ class ReportMeta(BaseModel):
     currency: str
     interval: str
     forecast_start_date: str | None = None
+    forecast_end_date: str | None = None
     baseline_active: bool = False
     baseline_lookback_days: int | None = None
+    credit_card_accounting_mode: str | None = None
 
 
 class CategoryTrendItem(BaseModel):
@@ -50,9 +53,30 @@ class CategoryTrendItem(BaseModel):
     series: list[ReportDataPoint]
 
 
+class CashFlowProjectionItem(BaseModel):
+    date: str
+    description: str
+    amount: float
+    amount_primary: float
+    currency: str
+    type: str
+    source: str
+    status: str
+    account_id: UUID | None = None
+    account_name: str
+    account_type: str
+    category_id: UUID | None = None
+    category_name: str | None = None
+    category_color: str | None = None
+    recurring_id: UUID | None = None
+    transaction_id: UUID | None = None
+    auto_generate: bool | None = None
+
+
 class ReportResponse(BaseModel):
     summary: ReportSummary
     trend: list[ReportDataPoint]
     meta: ReportMeta
     composition: list[ReportCompositionItem] = []
     category_trend: list[CategoryTrendItem] = []
+    projection_items: list[CashFlowProjectionItem] = []

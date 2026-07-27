@@ -15,6 +15,7 @@ from app.models.transaction import Transaction
 from app.models.category import Category
 from app.models.user import User
 from app.services._query_filters import (
+    account_history_is_visible,
     counts_as_pnl,
     counts_as_user_pnl,
     owner_split_offset_by_category,
@@ -24,6 +25,7 @@ from app.services.admin_service import get_credit_card_accounting_mode
 from app.services.account_service import get_account_name
 from app.services.fx_rate_service import convert
 from app.schemas.report import (
+    CashFlowProjectionItem,
     CategoryTrendItem,
     ReportBreakdown,
     ReportCompositionItem,
@@ -407,7 +409,7 @@ async def get_income_expenses_report(
         .join(Account, Transaction.account_id == Account.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             report_date >= start,
             report_date <= today,
             Transaction.source != "opening_balance",
@@ -665,7 +667,7 @@ async def get_income_expenses_report(
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             report_date >= start,
             report_date <= today,
             Transaction.source != "opening_balance",
@@ -727,7 +729,7 @@ async def get_income_expenses_report(
         .join(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             report_date >= start,
             report_date <= today,
             Transaction.source != "opening_balance",
@@ -765,7 +767,7 @@ async def get_income_expenses_report(
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             report_date >= start,
             report_date <= today,
             Transaction.source != "opening_balance",
@@ -1174,6 +1176,7 @@ async def get_cash_flow_report(
         return float((amount * rate).quantize(Decimal("0.01")))
 
     flows: dict[date, dict[str, float]] = {}
+    projection_items: list[CashFlowProjectionItem] = []
 
     def _add_flow(d: date, amount: float, is_credit: bool) -> None:
         bucket = flows.setdefault(d, {"inflow": 0.0, "outflow": 0.0})
@@ -1197,7 +1200,7 @@ async def get_cash_flow_report(
         .join(Account, Transaction.account_id == Account.id)
         .where(
             Transaction.workspace_id == workspace_id,
-            Account.is_closed == False,
+            account_history_is_visible(),
             flow_date_col > chart_start,
             flow_date_col <= today,
             Transaction.source != "opening_balance",
@@ -1218,12 +1221,24 @@ async def get_cash_flow_report(
     booked_result = await session.execute(
         select(
             flow_date_col,
+            Transaction.id,
+            Transaction.date,
+            Transaction.description,
+            Transaction.source,
             Transaction.type,
             Transaction.amount,
             Transaction.amount_primary,
             Transaction.currency,
+            Account.id,
+            Account.name,
+            Account.display_name,
+            Account.type,
+            Category.id,
+            Category.name,
+            Category.color,
         )
         .join(Account, Transaction.account_id == Account.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.workspace_id == workspace_id,
             Account.is_closed == False,
@@ -1235,7 +1250,24 @@ async def get_cash_flow_report(
         )
     )
     for row in booked_result.all():
-        flow_date, tx_type, amt, amt_primary, ccy = row
+        (
+            flow_date,
+            transaction_id,
+            transaction_date,
+            description,
+            transaction_source,
+            tx_type,
+            amt,
+            amt_primary,
+            ccy,
+            account_id,
+            account_name,
+            account_display_name,
+            account_type,
+            category_id,
+            category_name,
+            category_color,
+        ) = row
         if amt_primary is not None:
             amount_primary = float(amt_primary)
         else:
@@ -1243,6 +1275,29 @@ async def get_cash_flow_report(
         if amount_primary == 0:
             continue
         _add_flow(flow_date, abs(amount_primary), tx_type == "credit")
+        is_future_card_purchase = (
+            accrual
+            and account_type == "credit_card"
+            and transaction_date <= today
+            and flow_date > today
+        )
+        projection_items.append(CashFlowProjectionItem(
+            date=flow_date.isoformat(),
+            description=description,
+            amount=round(abs(float(amt or 0)), 2),
+            amount_primary=round(abs(amount_primary), 2),
+            currency=ccy,
+            type=tx_type,
+            source="credit_card" if is_future_card_purchase else "booked",
+            status="scheduled",
+            account_id=account_id,
+            account_name=account_display_name or account_name,
+            account_type=account_type,
+            category_id=category_id,
+            category_name=category_name,
+            category_color=category_color,
+            transaction_id=transaction_id,
+        ))
 
     # 2. Accrual mode: pending CC purchases (purchase date <= today, due
     #    date in the forward window) already reduced today's balance via the
@@ -1309,6 +1364,26 @@ async def get_cash_flow_report(
         if amount_primary == 0:
             continue
         _add_flow(d, amount_primary, proj["type"] == "credit")
+
+        if not baseline:
+            projection_items.append(CashFlowProjectionItem(
+                date=d.isoformat(),
+                description=proj["description"],
+                amount=round(abs(float(proj["amount"])), 2),
+                amount_primary=round(abs(amount_primary), 2),
+                currency=proj["currency"],
+                type=proj["type"],
+                source="recurring",
+                status="expected",
+                account_id=proj["account_id"],
+                account_name=proj["account_name"],
+                account_type=proj["account_type"],
+                category_id=proj["category_id"],
+                category_name=proj["category_name"],
+                category_color=proj["category_color"],
+                recurring_id=proj["recurring_id"],
+                auto_generate=proj["auto_generate"],
+            ))
 
         cat_id = proj["category_id"]
         if cat_id:
@@ -1470,8 +1545,10 @@ async def get_cash_flow_report(
         currency=primary_currency,
         interval=interval,
         forecast_start_date=_format_date_label(today, interval),
+        forecast_end_date=end.isoformat(),
         baseline_active=baseline,
         baseline_lookback_days=baseline_lookback_days if baseline else None,
+        credit_card_accounting_mode=accounting_mode,
     )
 
     composition: list[ReportCompositionItem] = []
@@ -1489,4 +1566,8 @@ async def get_cash_flow_report(
     return ReportResponse(
         summary=summary, trend=trend, meta=meta,
         composition=composition, category_trend=[],
+        projection_items=sorted(
+            projection_items,
+            key=lambda item: (item.date, item.type, item.description.lower()),
+        ),
     )

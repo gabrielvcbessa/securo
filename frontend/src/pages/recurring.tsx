@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { getAccountName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
@@ -25,6 +25,7 @@ import { DatePickerInput } from '@/components/ui/date-picker-input'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
+import { useSearchParams } from 'react-router-dom'
 
 function formatCurrency(value: number, currency = 'USD', locale = 'en-US') {
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value)
@@ -69,8 +70,21 @@ function RecurringTab() {
   const { canWrite } = useWorkspace()
   const userCurrency = user?.preferences?.currency_display ?? 'USD'
   const queryClient = useQueryClient()
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [createDefaults, setCreateDefaults] = useState(() => {
+    const requestedType = searchParams.get('new')
+    return {
+      type: (requestedType === 'credit' ? 'credit' : 'debit') as 'debit' | 'credit',
+      enabled: requestedType === 'credit' || requestedType === 'debit',
+    }
+  })
+  const [dialogOpen, setDialogOpen] = useState(createDefaults.enabled)
   const [editing, setEditing] = useState<RecurringTransaction | null>(null)
+
+  useEffect(() => {
+    if (!createDefaults.enabled) return
+    setSearchParams({}, { replace: true })
+  }, [createDefaults.enabled, setSearchParams])
 
   const { data: recurringList } = useQuery({
     queryKey: ['recurring'],
@@ -87,7 +101,7 @@ function RecurringTab() {
     queryFn: categoryGroupsApi.list,
   })
 
-  const { data: accountsList } = useQuery({
+  const { data: accountsList, isLoading: accountsLoading } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => accountsApi.list(),
   })
@@ -158,7 +172,15 @@ function RecurringTab() {
                   <RefreshCw size={12} />
                   <span className="hidden sm:inline">{t('recurring.generatePending')}</span>
                 </Button>
-                <Button size="sm" className="gap-1.5 h-8" onClick={() => { setEditing(null); setDialogOpen(true) }}>
+                <Button
+                  size="sm"
+                  className="gap-1.5 h-8"
+                  onClick={() => {
+                    setEditing(null)
+                    setCreateDefaults({ type: 'debit', enabled: false })
+                    setDialogOpen(true)
+                  }}
+                >
                   <Plus size={13} /> <span className="hidden sm:inline">{t('recurring.add')}</span>
                 </Button>
               </div>
@@ -246,8 +268,10 @@ function RecurringTab() {
             <DialogTitle>{editing ? t('recurring.edit') : t('recurring.add')}</DialogTitle>
           </DialogHeader>
           <RecurringForm
-            key={editing?.id ?? 'new'}
+            key={editing?.id ?? `new-${createDefaults.type}-${createDefaults.enabled ? 'plan' : 'manual'}-${accountsList?.[0]?.id ?? 'loading'}`}
             recurring={editing}
+            defaultType={createDefaults.type}
+            defaultAutoGenerate={!createDefaults.enabled}
             categories={categoriesList ?? []}
             categoryGroups={categoryGroupsList ?? []}
             accounts={accountsList ?? []}
@@ -259,7 +283,7 @@ function RecurringTab() {
               }
             }}
             onCancel={() => { setDialogOpen(false); setEditing(null) }}
-            loading={createMutation.isPending || updateMutation.isPending}
+            loading={accountsLoading || createMutation.isPending || updateMutation.isPending}
           />
         </DialogContent>
       </Dialog>
@@ -269,6 +293,8 @@ function RecurringTab() {
 
 function RecurringForm({
   recurring,
+  defaultType,
+  defaultAutoGenerate,
   categories,
   categoryGroups,
   accounts,
@@ -277,6 +303,8 @@ function RecurringForm({
   loading,
 }: {
   recurring: RecurringTransaction | null
+  defaultType: 'debit' | 'credit'
+  defaultAutoGenerate: boolean
   categories: Category[]
   categoryGroups: CategoryGroup[]
   accounts: { id: string; name: string }[]
@@ -295,7 +323,7 @@ function RecurringForm({
   const [description, setDescription] = useState(recurring?.description ?? '')
   const [amount, setAmount] = useState(recurring?.amount?.toString() ?? '')
   const [currency, setCurrency] = useState(recurring?.currency ?? userCurrency)
-  const [type, setType] = useState<'debit' | 'credit'>(recurring?.type ?? 'debit')
+  const [type, setType] = useState<'debit' | 'credit'>(recurring?.type ?? defaultType)
   const [frequency, setFrequency] = useState(recurring?.frequency ?? 'monthly')
   const [dayOfMonth, setDayOfMonth] = useState(recurring?.day_of_month?.toString() ?? '')
   const [startDate, setStartDate] = useState(recurring?.start_date ?? new Date().toISOString().split('T')[0])
@@ -303,7 +331,9 @@ function RecurringForm({
   const [categoryId, setCategoryId] = useState(recurring?.category_id ?? '')
   const [accountId, setAccountId] = useState(recurring?.account_id ?? accounts[0]?.id ?? '')
   const [isActive, setIsActive] = useState(recurring?.is_active ?? true)
-  const [autoGenerate, setAutoGenerate] = useState(recurring?.auto_generate ?? true)
+  const [autoGenerate, setAutoGenerate] = useState(
+    recurring?.auto_generate ?? defaultAutoGenerate
+  )
 
   const selectClass = 'w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
 
@@ -332,7 +362,7 @@ function RecurringForm({
         <Label>{t('recurring.description')}</Label>
         <Input value={description} onChange={(e) => setDescription(e.target.value)} required />
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label>{t('recurring.amount')}</Label>
           <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
@@ -353,7 +383,7 @@ function RecurringForm({
           </select>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{t('recurring.frequency')}</Label>
           <select className={selectClass} value={frequency} onChange={(e) => setFrequency(e.target.value as 'monthly' | 'weekly' | 'yearly')}>
@@ -369,7 +399,7 @@ function RecurringForm({
           </div>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{t('recurring.startDate')}</Label>
           <DatePickerInput value={startDate} onChange={setStartDate} className="w-full justify-start" />
@@ -379,7 +409,7 @@ function RecurringForm({
           <DatePickerInput value={endDate} onChange={setEndDate} placeholder={t('recurring.endDate')} className="w-full justify-start" />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{t('recurring.category')}</Label>
           <CategorySelect

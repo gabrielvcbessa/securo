@@ -1248,6 +1248,46 @@ async def test_cash_flow_recurring_credit_increases_balance(
 
 
 @pytest.mark.asyncio
+async def test_cash_flow_exposes_recurring_projection_details(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """Cash Flow returns the existing recurring plan as inspectable occurrences."""
+    account = await _make_manual_account(session, test_user.id, "Planning Checking")
+    today = date.today()
+    occurrence = today + timedelta(days=3)
+    recurring = await _make_recurring(
+        session,
+        test_user.id,
+        account.id,
+        amount=40880,
+        txn_type="credit",
+        frequency="monthly",
+        description="Monthly income plan",
+        next_occurrence=occurrence,
+    )
+    recurring.auto_generate = False
+    await session.commit()
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=1, interval="daily",
+    )
+
+    first = report.projection_items[0]
+    assert first.date == occurrence.isoformat()
+    assert first.description == "Monthly income plan"
+    assert first.amount == 40880
+    assert first.amount_primary == 40880
+    assert first.type == "credit"
+    assert first.source == "recurring"
+    assert first.status == "expected"
+    assert first.account_id == account.id
+    assert first.account_name == "Planning Checking"
+    assert first.account_type == "checking"
+    assert first.recurring_id == recurring.id
+    assert first.auto_generate is False
+
+
+@pytest.mark.asyncio
 async def test_cash_flow_recurring_debit_decreases_balance(
     session: AsyncSession, test_user, test_workspace: User
 ):
@@ -1346,6 +1386,11 @@ async def test_cash_flow_future_dated_booked_transaction_included(
     )
 
     report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
+    booked = next(item for item in report.projection_items if item.source == "booked")
+    assert booked.description == "Test credit"
+    assert booked.status == "scheduled"
+    assert booked.amount_primary == 750
+    assert booked.account_id == account.id
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     ending = next(b for b in report.summary.breakdowns if b.key == "endingBalance")
 
@@ -2524,6 +2569,39 @@ async def test_cash_flow_baseline_no_history_returns_empty_projection(
     assert proj_exp.value == 0.0
     # Ending balance equals starting (flat line).
     assert report.summary.change_amount == 0.0
+
+
+@pytest.mark.asyncio
+async def test_archived_history_does_not_drive_baseline(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """Retaining past history must not forecast activity from a closed account."""
+    account = await _make_manual_account(session, test_user.id, "Archived History")
+    await _add_txn(
+        session,
+        test_user.id,
+        account.id,
+        900,
+        "debit",
+        date.today() - timedelta(days=10),
+    )
+    account.is_closed = True
+    account.exclude_from_reports = False
+    await session.commit()
+
+    baseline = await get_cash_flow_report(
+        session,
+        test_workspace.id,
+        test_user.id,
+        months=3,
+        interval="daily",
+        baseline=True,
+    )
+    projected_expenses = next(
+        item for item in baseline.summary.breakdowns if item.key == "projectedExpenses"
+    )
+    assert projected_expenses.value == 0
+    assert baseline.meta.baseline_lookback_days == 0
 
 
 @pytest.mark.asyncio

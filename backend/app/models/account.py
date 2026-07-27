@@ -42,6 +42,10 @@ class Account(Base):
     card_level: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Default True preserves the historical behavior for legacy/directly
+    # archived rows. The close endpoint explicitly records the user's choice
+    # and defaults new archive actions to retaining history.
+    exclude_from_reports: Mapped[bool] = mapped_column(Boolean, default=True)
 
     connection: Mapped[Optional["BankConnection"]] = relationship(back_populates="accounts")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account", cascade="all, delete-orphan")

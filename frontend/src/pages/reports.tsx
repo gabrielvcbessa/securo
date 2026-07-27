@@ -18,12 +18,14 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
-import { HelpCircle, X } from 'lucide-react'
+import { AlertTriangle, X } from 'lucide-react'
 import { reports } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { PageHeader } from '@/components/page-header'
 import { CashflowSankey } from '@/components/reports/CashflowSankey'
+import { CashFlowPlanPanel } from '@/components/reports/CashFlowPlanPanel'
+import { Button } from '@/components/ui/button'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
@@ -196,7 +198,7 @@ export default function ReportsPage() {
     }
   }
 
-  const { data, isLoading } = useQuery<ReportResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<ReportResponse>({
     queryKey: ['reports', activeTab, rangeKey, months, period ?? null, days ?? null, interval, isCashFlow ? cashFlowBaseline : false, activeAccountIds, activeWalletIds],
     queryFn: () =>
       isCashFlow
@@ -210,6 +212,10 @@ export default function ReportsPage() {
   const summary = data?.summary
   const trend = data?.trend ?? []
   const meta = data?.meta
+  const reportHorizon = meta?.forecast_end_date
+    ? new Date(`${meta.forecast_end_date}T00:00:00`).toLocaleDateString(locale)
+    : ''
+  const hasRenderableReport = isLoading || Boolean(data)
 
   // For cash flow we split the line at `forecast_start_date` so the past
   // section renders solid and the forward projection renders dashed.
@@ -462,41 +468,37 @@ export default function ReportsPage() {
         section={t('reports.section')}
         title={t(currentTab.labelKey)}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {isCashFlow && (
               <div
-                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  cashFlowBaseline
-                    ? 'border-primary/40 bg-primary/10 text-primary'
-                    : 'border-border bg-card text-muted-foreground'
-                }`}
+                className="flex items-center rounded-lg border border-border bg-card overflow-hidden"
+                role="group"
+                aria-label={t('reports.forecastBasis')}
               >
                 <button
                   type="button"
-                  onClick={() => setCashFlowBaseline((v) => !v)}
-                  className="flex items-center gap-2 hover:text-foreground transition-colors"
+                  onClick={() => setCashFlowBaseline(false)}
+                  className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    !cashFlowBaseline
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                  aria-pressed={!cashFlowBaseline}
+                >
+                  {t('reports.myPlan')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashFlowBaseline(true)}
+                  className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    cashFlowBaseline
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
                   aria-pressed={cashFlowBaseline}
                 >
-                  <span
-                    className={`relative inline-flex h-3.5 w-6 shrink-0 items-center rounded-full transition-colors ${
-                      cashFlowBaseline ? 'bg-primary' : 'bg-muted'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${
-                        cashFlowBaseline ? 'translate-x-3' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </span>
-                  {t('reports.includeEstimate')}
+                  {t('reports.recentActivity')}
                 </button>
-                <span
-                  title={t('reports.includeEstimateHelp')}
-                  aria-label={t('reports.includeEstimateHelp')}
-                  className="inline-flex cursor-help"
-                >
-                  <HelpCircle className="h-3.5 w-3.5 opacity-60" />
-                </span>
               </div>
             )}
             <div className="flex items-center rounded-lg border border-border bg-card overflow-hidden">
@@ -534,7 +536,7 @@ export default function ReportsPage() {
       />
 
       {/* Tab Bar */}
-      <div className="flex items-center gap-1 mb-5 border-b border-border">
+      <div className="flex items-center gap-1 mb-5 border-b border-border overflow-x-auto">
         {REPORT_TABS.map((tab) => (
           <button
             key={tab.key}
@@ -561,7 +563,33 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {isError && (
+        <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm font-medium">
+              <AlertTriangle size={16} className="inline mr-2 -mt-0.5" />
+              {t('reports.loadError')}
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
+              {t('common.retry')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isCashFlow && data && !isLoading && (
+        <CashFlowPlanPanel
+          report={data}
+          baseline={cashFlowBaseline}
+          accountIds={acctIds}
+          locale={locale}
+          formatAmount={(value) => mask(formatCurrency(value, userCurrency, locale))}
+          onUseMyPlan={() => setCashFlowBaseline(false)}
+        />
+      )}
+
       {/* Hero Card */}
+      {hasRenderableReport && (
       <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
         <div className="px-5 py-4">
           {isLoading ? (
@@ -577,7 +605,9 @@ export default function ReportsPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-0.5 uppercase tracking-wider">
-                  {t(currentTab.labelKey)}
+                  {isCashFlow
+                    ? t('reports.projectedBalanceOn', { date: reportHorizon })
+                    : t(currentTab.labelKey)}
                 </p>
                 <div className="flex items-baseline gap-3">
                   <p className="text-3xl font-bold tabular-nums text-foreground">
@@ -616,9 +646,10 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Flow (Sankey) */}
-      {isMoneyMap && (
+      {hasRenderableReport && isMoneyMap && (
         <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
           <div className="px-5 pt-5 pb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-foreground">
@@ -653,7 +684,7 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {!isMoneyMap && (
+      {hasRenderableReport && !isMoneyMap && (
       <>
       {/* Main Trend Chart */}
       <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
