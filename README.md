@@ -36,9 +36,7 @@ docker compose up --build
 Open [http://localhost:3000](http://localhost:3000) and create an account. That's it.
 
 For the personal transaction-only deployment, see
-[Deploy Securo on a compact Proxmox VM](docs/proxmox-local.md). The existing
-[Proxmox + TrueNAS profile](docs/proxmox-truenas.md) remains available when
-backups or attachments are wanted.
+[Deploy Securo on a compact Proxmox VM](docs/proxmox-local.md).
 
 <p align="center">
   <img src="docs/screenshot.png" width="800" alt="Securo dashboard" />
