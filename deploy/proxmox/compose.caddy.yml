@@ -1,0 +1,20 @@
+services:
+  caddy:
+    image: docker.io/library/caddy:2-alpine
+    environment:
+      SECURO_SITE_ADDRESS: ${SECURO_SITE_ADDRESS:?Set SECURO_SITE_ADDRESS in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/proxmox/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

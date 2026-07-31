@@ -8,7 +8,7 @@ x-podman:
   in_pod: false
 
 x-backend-env: &backend-env
-  DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/securo
+  DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/securo}
   SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
   DEBUG: ${DEBUG:-false}
   FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
@@ -95,13 +95,13 @@ services:
     image: ${DB_IMAGE:-docker.io/pgvector/pgvector:pg16}
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: securo
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-securo}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-securo}" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -110,15 +110,15 @@ services:
     <<: *backend-base
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:${BACKEND_PORT:-8000}:8000"
 
   frontend:
     image: ghcr.io/securo-finance/securo-frontend:latest
     ports:
-      - "${FRONTEND_PORT:-3000}:8080"
+      - "${FRONTEND_BIND_ADDRESS:-0.0.0.0}:${FRONTEND_PORT:-3000}:8080"
     environment:
       BACKEND_URL: http://backend:8000
-      FRONTEND_URL: http://localhost:3000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       - backend
     restart: unless-stopped
