@@ -1,0 +1,48 @@
+name: API Contract
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - bessa/main
+
+permissions:
+  contents: read
+
+jobs:
+  openapi:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -e .
+
+      - name: Recreate OpenAPI
+        run: python scripts/export_openapi.py --output /tmp/openapi-v1.json
+
+      - name: Require committed contract to be current
+        run: cmp /tmp/openapi-v1.json ../docs/api/openapi-v1.json
+
+      - name: Check pull request compatibility
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        run: |
+          if git show "${{ github.event.pull_request.base.sha }}:docs/api/openapi-v1.json" \
+            > /tmp/openapi-base.json 2>/dev/null; then
+            python backend/scripts/check_openapi_compat.py \
+              /tmp/openapi-base.json docs/api/openapi-v1.json
+          else
+            echo "No API baseline exists on the target branch yet."
+          fi

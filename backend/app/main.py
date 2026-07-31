@@ -14,6 +14,7 @@ from app.api.categories import router as categories_router
 from app.api.category_groups import router as category_groups_router
 from app.api.connections import router as connections_router
 from app.api.custom_auth import router as custom_auth_router
+from app.api.mobile_auth import router as mobile_auth_router
 from app.api.dashboard import router as dashboard_router
 from app.api.import_logs import router as import_logs_router
 from app.api.oidc_auth import router as oidc_auth_router
@@ -120,6 +121,7 @@ app.include_router(
     tags=["auth"],
     dependencies=[Depends(login_rate_limit)],
 )
+app.include_router(mobile_auth_router)
 app.include_router(
     two_factor_router,
     prefix="/api/auth",

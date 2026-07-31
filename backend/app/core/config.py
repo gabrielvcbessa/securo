@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     secret_key: SecretStr = SecretStr("change-me-in-production")
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24 hours
+    mobile_access_token_expire_minutes: int = 15
+    mobile_refresh_token_expire_days: int = 90
 
     # Pluggy
     pluggy_client_id: str = ""

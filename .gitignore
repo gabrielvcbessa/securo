@@ -12,6 +12,7 @@ tmp/
 docker-compose.override.yml
 .deploy-tag
 .previous-deploy-tag
+generated/android-client/
 
 # Ignore local configuration files
 .vscode/

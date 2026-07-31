@@ -16,6 +16,8 @@ x-default-logging: &default-logging
 x-backend-env: &backend-env
   DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/securo}
   SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
+  MOBILE_ACCESS_TOKEN_EXPIRE_MINUTES: ${MOBILE_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+  MOBILE_REFRESH_TOKEN_EXPIRE_DAYS: ${MOBILE_REFRESH_TOKEN_EXPIRE_DAYS:-90}
   DEBUG: ${DEBUG:-false}
   FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
   PLUGGY_CLIENT_ID: ${PLUGGY_CLIENT_ID:-}
