@@ -19,6 +19,11 @@ Authentication for Android:
 Mobile auth errors use `detail.code` plus a human-readable `detail.message`.
 Clients branch on the code, never on translated text.
 
+When creating a transaction, send a unique `Idempotency-Key` header (1 to 128
+characters). Retrying the same payload with the same key returns the original
+transaction with HTTP 200. Reusing the key for another payload returns
+`IDEMPOTENCY_KEY_REUSED` with HTTP 409.
+
 Generate Retrofit/Kotlin models from the pinned generator:
 
 ```bash

@@ -674,6 +674,8 @@ async def create_transaction(
     workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     data: TransactionCreate,
+    *,
+    commit: bool = True,
 ) -> Transaction:
     # Verify account belongs to the workspace
     account_result = await session.execute(
@@ -731,8 +733,11 @@ async def create_transaction(
     if data.splits is not None:
         await split_service.replace_splits(session, transaction, data.splits, user_id)
 
-    await session.commit()
-    await session.refresh(transaction, ["category", "splits"])
+    if commit:
+        await session.commit()
+        await session.refresh(transaction, ["category", "splits"])
+    else:
+        await session.flush()
     return transaction
 
 

@@ -1,13 +1,17 @@
 import csv
+import hashlib
 import io
+import json
 import uuid
 from datetime import date
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_async_session
 from app.core.workspace_context import (
@@ -18,6 +22,7 @@ from app.core.workspace_context import (
 from app.schemas.transaction import BulkAddToGroupRequest, BulkCategorizeRequest, BulkTagsRequest, CreateCounterpartRequest, LinkTransferRequest, TransactionCreate, TransactionRead, TransactionUpdate, TransferCreate, TransferRead
 from app.services import transaction_service
 from app.services.admin_service import get_credit_card_accounting_mode
+from app.models.idempotency_record import IdempotencyRecord
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -374,13 +379,92 @@ async def get_transaction(
 @router.post("", response_model=TransactionRead, status_code=status.HTTP_201_CREATED)
 async def create_transaction(
     data: TransactionCreate,
+    response: Response,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
 ):
     try:
+        request_hash = hashlib.sha256(
+            json.dumps(
+                data.model_dump(mode="json"),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        if idempotency_key is not None:
+            idempotency_key = idempotency_key.strip()
+            if not 1 <= len(idempotency_key) <= 128:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "INVALID_IDEMPOTENCY_KEY",
+                        "message": "Idempotency-Key must contain 1 to 128 characters",
+                    },
+                )
+            existing = await session.scalar(
+                select(IdempotencyRecord).where(
+                    IdempotencyRecord.workspace_id == ctx.workspace.id,
+                    IdempotencyRecord.user_id == ctx.user_id,
+                    IdempotencyRecord.idempotency_key == idempotency_key,
+                )
+            )
+            if existing:
+                if existing.request_hash != request_hash:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "IDEMPOTENCY_KEY_REUSED",
+                            "message": "The idempotency key was already used with another request",
+                        },
+                    )
+                transaction = await transaction_service.get_transaction(
+                    session, existing.transaction_id, ctx.workspace.id
+                )
+                response.status_code = status.HTTP_200_OK
+                return _tag_fx_fallback(
+                    TransactionRead.model_validate(transaction, from_attributes=True),
+                    ctx.user.primary_currency,
+                )
+
         transaction = await transaction_service.create_transaction(
-            session, ctx.workspace.id, ctx.user_id, data
+            session,
+            ctx.workspace.id,
+            ctx.user_id,
+            data,
+            commit=idempotency_key is None,
         )
+        if idempotency_key is not None:
+            session.add(IdempotencyRecord(
+                workspace_id=ctx.workspace.id,
+                user_id=ctx.user_id,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                transaction_id=transaction.id,
+            ))
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                existing = await session.scalar(
+                    select(IdempotencyRecord).where(
+                        IdempotencyRecord.workspace_id == ctx.workspace.id,
+                        IdempotencyRecord.user_id == ctx.user_id,
+                        IdempotencyRecord.idempotency_key == idempotency_key,
+                    )
+                )
+                if existing is None or existing.request_hash != request_hash:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "IDEMPOTENCY_KEY_REUSED",
+                            "message": "The idempotency key was claimed by another request",
+                        },
+                    )
+                transaction = await transaction_service.get_transaction(
+                    session, existing.transaction_id, ctx.workspace.id
+                )
+                response.status_code = status.HTTP_200_OK
         full_tx = await transaction_service.get_transaction(session, transaction.id, ctx.workspace.id)
         primary_currency = ctx.user.primary_currency
         return _tag_fx_fallback(TransactionRead.model_validate(full_tx, from_attributes=True), primary_currency)

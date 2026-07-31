@@ -1,6 +1,7 @@
 from app.models.user import User
 from app.models.passkey import UserPasskey
 from app.models.mobile_session import MobileSession
+from app.models.idempotency_record import IdempotencyRecord
 from app.models.workspace import Workspace, WorkspaceMember
 from app.models.category import Category
 from app.models.category_group import CategoryGroup
@@ -35,6 +36,7 @@ __all__ = [
     "User",
     "UserPasskey",
     "MobileSession",
+    "IdempotencyRecord",
     "Workspace",
     "WorkspaceMember",
     "Category",

@@ -111,6 +111,12 @@
             ],
             "title": "Statement Close Day"
           },
+          "sync_mode": {
+            "const": "manual",
+            "default": "manual",
+            "title": "Sync Mode",
+            "type": "string"
+          },
           "type": {
             "title": "Type",
             "type": "string"
@@ -361,6 +367,18 @@
             ],
             "title": "Statement Close Day"
           },
+          "sync_mode": {
+            "default": "manual",
+            "enum": [
+              "full",
+              "balance_only",
+              "transactions_only",
+              "manual",
+              "excluded"
+            ],
+            "title": "Sync Mode",
+            "type": "string"
+          },
           "type": {
             "title": "Type",
             "type": "string"
@@ -567,6 +585,24 @@
               }
             ],
             "title": "Statement Close Day"
+          },
+          "sync_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "full",
+                  "balance_only",
+                  "transactions_only",
+                  "manual",
+                  "excluded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Mode"
           },
           "type": {
             "anyOf": [
@@ -2868,6 +2904,16 @@
             ],
             "title": "Category Name"
           },
+          "confidence": {
+            "default": "estimated",
+            "title": "Confidence",
+            "type": "string"
+          },
+          "confidence_score": {
+            "default": 0.5,
+            "title": "Confidence Score",
+            "type": "number"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -2878,6 +2924,38 @@
           },
           "description": {
             "title": "Description",
+            "type": "string"
+          },
+          "effective_date": {
+            "default": "",
+            "title": "Effective Date",
+            "type": "string"
+          },
+          "installment_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Number"
+          },
+          "installment_purchase_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Purchase Date"
+          },
+          "origin": {
+            "default": "unknown",
+            "title": "Origin",
             "type": "string"
           },
           "recurring_id": {
@@ -2899,6 +2977,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "total_installments": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Installments"
           },
           "transaction_id": {
             "anyOf": [
@@ -3797,6 +3886,56 @@
           "detail"
         ],
         "title": "ErrorModel",
+        "type": "object"
+      },
+      "ForecastWarning": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "missing_installments": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Missing Installments",
+            "type": "array"
+          },
+          "transaction_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Id"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ForecastWarning",
         "type": "object"
       },
       "GoalCreate": {
@@ -6942,6 +7081,14 @@
             ],
             "title": "Baseline Lookback Days"
           },
+          "confidence_layers": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Confidence Layers",
+            "type": "object"
+          },
           "credit_card_accounting_mode": {
             "anyOf": [
               {
@@ -6978,6 +7125,14 @@
               }
             ],
             "title": "Forecast Start Date"
+          },
+          "forecast_warnings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ForecastWarning"
+            },
+            "title": "Forecast Warnings",
+            "type": "array"
           },
           "interval": {
             "title": "Interval",
@@ -19745,6 +19900,22 @@
       "post": {
         "operationId": "create_transaction_api_transactions_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
           {
             "in": "header",
             "name": "X-Workspace-Id",

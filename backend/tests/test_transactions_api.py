@@ -373,6 +373,51 @@ async def test_create_transaction(
 
 
 @pytest.mark.asyncio
+async def test_create_transaction_idempotency_key_returns_original(
+    client: AsyncClient, auth_headers, test_account: Account
+):
+    payload = {
+        "account_id": str(test_account.id),
+        "description": "Android offline entry",
+        "amount": "42.00",
+        "date": "2026-02-20",
+        "type": "debit",
+    }
+    headers = {**auth_headers, "Idempotency-Key": "android-create-transaction-1"}
+
+    first = await client.post("/api/transactions", headers=headers, json=payload)
+    second = await client.post("/api/transactions", headers=headers, json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_create_transaction_idempotency_key_rejects_different_payload(
+    client: AsyncClient, auth_headers, test_account: Account
+):
+    headers = {**auth_headers, "Idempotency-Key": "android-create-transaction-2"}
+    payload = {
+        "account_id": str(test_account.id),
+        "description": "Original",
+        "amount": "10.00",
+        "date": "2026-02-20",
+        "type": "debit",
+    }
+    first = await client.post("/api/transactions", headers=headers, json=payload)
+    conflict = await client.post(
+        "/api/transactions",
+        headers=headers,
+        json={**payload, "amount": "11.00"},
+    )
+
+    assert first.status_code == 201
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+
+
+@pytest.mark.asyncio
 async def test_create_transaction_auto_categorize(
     client: AsyncClient, auth_headers, test_account: Account,
     test_rules, test_categories: list[Category],
