@@ -50,6 +50,8 @@ export function CashFlowPlanPanel({
   const movements = groupCashFlowMovements(items)
   const visibleMovements = showAll ? movements : movements.slice(0, 8)
   const lookbackDays = report.meta.baseline_lookback_days ?? 0
+  const layers = report.meta.confidence_layers
+  const warnings = report.meta.forecast_warnings ?? []
 
   if (baseline) {
     return (
@@ -125,6 +127,28 @@ export function CashFlowPlanPanel({
           tone="negative"
         />
       </div>
+
+      {layers && (
+        <div className="grid grid-cols-3 gap-px bg-border border-t border-border">
+          <PlanMetric label={t('reports.actualLayer')} value={formatAmount(layers.actual ?? 0)} />
+          <PlanMetric label={t('reports.committedLayer')} value={formatAmount(layers.committed ?? 0)} />
+          <PlanMetric label={t('reports.estimatedLayer')} value={formatAmount(layers.estimated ?? 0)} />
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="mx-5 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+          <p className="font-semibold">
+            <AlertTriangle size={14} className="inline mr-1.5 -mt-0.5" />
+            {t('reports.forecastWarnings', { count: warnings.length })}
+          </p>
+          <ul className="mt-2 list-disc pl-5 space-y-1">
+            {warnings.slice(0, 3).map((warning) => (
+              <li key={`${warning.transaction_id}:${warning.code}`}>{warning.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="px-5 py-4 border-b border-border flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
         <span>
@@ -205,6 +229,10 @@ export function CashFlowPlanPanel({
                         {new Date(`${item.date}T00:00:00`).toLocaleDateString(locale)}
                         {' · '}{item.accountName}
                         {' · '}{t(`reports.${item.sourceKey}`)}
+                        {' · '}{t(`reports.confidence.${item.confidence}`)}
+                        {item.installmentNumber && item.totalInstallments
+                          ? ` · ${item.installmentNumber}/${item.totalInstallments}`
+                          : ''}
                         {item.itemCount > 1 && ` · ${t('reports.cardPurchaseCount', { count: item.itemCount })}`}
                       </p>
                     </div>

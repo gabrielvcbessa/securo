@@ -42,6 +42,8 @@ class ReportMeta(BaseModel):
     baseline_active: bool = False
     baseline_lookback_days: int | None = None
     credit_card_accounting_mode: str | None = None
+    confidence_layers: dict[str, float] = {}
+    forecast_warnings: list["ForecastWarning"] = []
 
 
 class CategoryTrendItem(BaseModel):
@@ -71,6 +73,21 @@ class CashFlowProjectionItem(BaseModel):
     recurring_id: UUID | None = None
     transaction_id: UUID | None = None
     auto_generate: bool | None = None
+    origin: str = "unknown"
+    effective_date: str = ""
+    confidence: str = "estimated"
+    confidence_score: float = 0.5
+    installment_number: int | None = None
+    total_installments: int | None = None
+    installment_purchase_date: str | None = None
+
+
+class ForecastWarning(BaseModel):
+    code: str
+    message: str
+    account_id: UUID | None = None
+    transaction_id: UUID | None = None
+    missing_installments: list[int] = []
 
 
 class ReportResponse(BaseModel):

@@ -153,6 +153,7 @@ export interface Account {
   is_closed: boolean
   closed_at: string | null
   exclude_from_history: boolean
+  sync_mode: 'full' | 'balance_only' | 'transactions_only' | 'manual' | 'excluded'
 }
 
 export interface CreditCardBill {
@@ -721,6 +722,8 @@ export interface ReportMeta {
   baseline_active?: boolean
   baseline_lookback_days?: number | null
   credit_card_accounting_mode?: 'cash' | 'accrual' | null
+  confidence_layers?: Record<'actual' | 'committed' | 'estimated', number>
+  forecast_warnings?: ForecastWarning[]
 }
 
 export interface ReportCompositionItem {
@@ -765,9 +768,9 @@ export interface CashFlowProjectionItem {
   amount_primary: number
   currency: string
   type: 'debit' | 'credit'
-  source: 'recurring' | 'booked' | 'credit_card'
-  status: 'expected' | 'scheduled'
-  account_id: string
+  source: 'recurring' | 'booked' | 'credit_card' | 'baseline'
+  status: 'expected' | 'scheduled' | 'estimated'
+  account_id: string | null
   account_name: string
   account_type: string
   category_id: string | null
@@ -776,4 +779,19 @@ export interface CashFlowProjectionItem {
   recurring_id: string | null
   transaction_id: string | null
   auto_generate: boolean | null
+  origin: string
+  effective_date: string
+  confidence: 'actual' | 'committed' | 'estimated'
+  confidence_score: number
+  installment_number: number | null
+  total_installments: number | null
+  installment_purchase_date: string | null
+}
+
+export interface ForecastWarning {
+  code: string
+  message: string
+  account_id: string | null
+  transaction_id: string | null
+  missing_installments: number[]
 }

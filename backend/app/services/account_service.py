@@ -159,6 +159,7 @@ def serialize_account(
         "is_closed": acc.is_closed,
         "closed_at": acc.closed_at,
         "exclude_from_history": acc.exclude_from_history,
+        "sync_mode": acc.sync_mode,
         "credit_limit": float(acc.credit_limit) if acc.credit_limit is not None else None,
         "statement_close_day": acc.statement_close_day,
         "payment_due_day": acc.payment_due_day,
@@ -246,6 +247,7 @@ async def create_account(
         minimum_payment=data.minimum_payment if is_cc else None,
         card_brand=data.card_brand if is_cc else None,
         card_level=data.card_level if is_cc else None,
+        sync_mode="manual",
     )
     session.add(account)
     await session.flush()  # get account.id without committing
@@ -305,13 +307,14 @@ async def update_account(
             "minimum_payment",
             "card_brand",
             "card_level",
+            "sync_mode",
         }
         disallowed = set(update_data.keys()) - editable_fields
         if disallowed:
             raise ValueError("Cannot edit bank-connected accounts")
         old_type = account.type
         new_type = update_data.get("type", account.type)
-        cc_fields = editable_fields - {"display_name", "type"}
+        cc_fields = editable_fields - {"display_name", "type", "sync_mode"}
         cc_update = {k: v for k, v in update_data.items() if k in cc_fields}
         if cc_update and new_type != "credit_card":
             raise ValueError("Credit card fields can only be set on credit card accounts")

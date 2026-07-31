@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -25,6 +25,7 @@ class AccountCreate(BaseModel):
     minimum_payment: Optional[Decimal] = None
     card_brand: Optional[str] = None
     card_level: Optional[str] = None
+    sync_mode: Literal["manual"] = "manual"
 
 
 class AccountUpdate(BaseModel):
@@ -39,6 +40,9 @@ class AccountUpdate(BaseModel):
     minimum_payment: Optional[Decimal] = None
     card_brand: Optional[str] = None
     card_level: Optional[str] = None
+    sync_mode: Optional[
+        Literal["full", "balance_only", "transactions_only", "manual", "excluded"]
+    ] = None
 
 
 class AccountRead(AccountBase):
@@ -70,6 +74,9 @@ class AccountRead(AccountBase):
     is_closed: bool = False
     closed_at: Optional[datetime] = None
     exclude_from_history: bool = False
+    sync_mode: Literal[
+        "full", "balance_only", "transactions_only", "manual", "excluded"
+    ] = "manual"
 
     model_config = ConfigDict(from_attributes=True)
 

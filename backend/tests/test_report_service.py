@@ -1285,6 +1285,47 @@ async def test_cash_flow_exposes_recurring_projection_details(
     assert first.account_type == "checking"
     assert first.recurring_id == recurring.id
     assert first.auto_generate is False
+    assert first.origin == "recurring_rule"
+    assert first.confidence == "committed"
+    assert first.confidence_score == 0.8
+    assert report.meta.confidence_layers["committed"] >= 40880
+
+
+@pytest.mark.asyncio
+async def test_cash_flow_excludes_accounts_marked_out_of_planning(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    account = await _make_manual_account(session, test_user.id, "Do Not Plan")
+    await _add_txn(
+        session,
+        test_user.id,
+        account.id,
+        5000,
+        "credit",
+        date.today(),
+        source="opening_balance",
+    )
+    account.sync_mode = "excluded"
+    await _make_recurring(
+        session,
+        test_user.id,
+        account.id,
+        amount=9999,
+        txn_type="debit",
+        frequency="monthly",
+        next_occurrence=date.today() + timedelta(days=2),
+    )
+    await session.commit()
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=1, interval="daily"
+    )
+    assert not report.projection_items
+    assert report.meta.confidence_layers["committed"] == 0
+    starting = next(
+        item for item in report.summary.breakdowns if item.key == "startingBalance"
+    )
+    assert starting.value == 0
 
 
 @pytest.mark.asyncio
@@ -1391,11 +1432,46 @@ async def test_cash_flow_future_dated_booked_transaction_included(
     assert booked.status == "scheduled"
     assert booked.amount_primary == 750
     assert booked.account_id == account.id
+    assert booked.origin == "manual"
+    assert booked.effective_date == (date.today() + timedelta(days=10)).isoformat()
+    assert booked.confidence == "committed"
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     ending = next(b for b in report.summary.breakdowns if b.key == "endingBalance")
 
     assert proj_income.value >= 750.0
     assert ending.value >= 1750.0
+
+
+@pytest.mark.asyncio
+async def test_cash_flow_warns_when_future_installments_are_not_reported(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    account = await _make_manual_account(session, test_user.id, "Installment Card")
+    transaction = await _add_txn(
+        session,
+        test_user.id,
+        account.id,
+        500,
+        "debit",
+        date.today() + timedelta(days=10),
+        source="sync",
+    )
+    transaction.installment_number = 3
+    transaction.total_installments = 12
+    transaction.installment_purchase_date = date.today() - timedelta(days=70)
+    await session.commit()
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=3, interval="daily"
+    )
+
+    warning = next(
+        warning
+        for warning in report.meta.forecast_warnings
+        if warning.code == "INSTALLMENTS_NOT_REPORTED"
+    )
+    assert warning.transaction_id == transaction.id
+    assert warning.missing_installments == [4, 5, 6]
 
 
 @pytest.mark.asyncio

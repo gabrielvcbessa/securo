@@ -779,6 +779,7 @@ function AccountDialog({
     credit_limit?: number | null
     statement_close_day?: number | null
     payment_due_day?: number | null
+    sync_mode?: Account['sync_mode']
   }) => void
   loading: boolean
 }) {
@@ -799,6 +800,7 @@ function AccountDialog({
   const [creditLimit, setCreditLimit] = useState(account?.credit_limit?.toString() ?? '')
   const [statementCloseDay, setStatementCloseDay] = useState(account?.statement_close_day?.toString() ?? '')
   const [paymentDueDay, setPaymentDueDay] = useState(account?.payment_due_day?.toString() ?? '')
+  const [syncMode, setSyncMode] = useState<Account['sync_mode']>(account?.sync_mode ?? 'manual')
 
   useEffect(() => {
     setName(account?.name ?? '')
@@ -810,6 +812,7 @@ function AccountDialog({
     setCreditLimit(account?.credit_limit?.toString() ?? '')
     setStatementCloseDay(account?.statement_close_day?.toString() ?? '')
     setPaymentDueDay(account?.payment_due_day?.toString() ?? '')
+    setSyncMode(account?.sync_mode ?? 'manual')
   }, [account])
 
   return (
@@ -834,6 +837,7 @@ function AccountDialog({
               ...(!isConnected && { name, balance: parseFloat(balance), balance_date: balanceDate, currency }),
               type,
               display_name: displayName.trim() || null,
+              sync_mode: isConnected ? syncMode : 'manual',
               ...(isCC && {
                 credit_limit: creditLimit !== '' ? parseFloat(creditLimit) : null,
                 statement_close_day: parseDay(statementCloseDay),
@@ -871,6 +875,23 @@ function AccountDialog({
                 ))}
               </select>
               <p className="text-xs text-muted-foreground">{t('accounts.typeOverrideHint')}</p>
+            </div>
+          )}
+          {account?.connection_id && (
+            <div className="space-y-2">
+              <Label>{t('accounts.syncMode')}</Label>
+              <select
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                value={syncMode}
+                onChange={(e) => setSyncMode(e.target.value as Account['sync_mode'])}
+              >
+                {(['full', 'balance_only', 'transactions_only', 'manual', 'excluded'] as const).map((mode) => (
+                  <option key={mode} value={mode}>{t(`accounts.syncModes.${mode}`)}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {t(`accounts.syncModeDescriptions.${syncMode}`)}
+              </p>
             </div>
           )}
           {!account?.connection_id && (

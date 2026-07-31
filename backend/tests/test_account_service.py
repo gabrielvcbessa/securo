@@ -361,6 +361,24 @@ async def test_update_bank_connected_type_override(
 
 
 @pytest.mark.asyncio
+async def test_update_bank_connected_sync_mode(
+    session: AsyncSession, test_user, test_workspace, test_connection
+):
+    account = await _make_account(
+        session, test_user.id, "Selective Sync",
+        connection_id=test_connection.id, external_id="ext-sync-mode",
+    )
+    updated = await update_account(
+        session,
+        account.id,
+        test_workspace.id,
+        AccountUpdate(sync_mode="transactions_only"),
+    )
+    assert updated is not None
+    assert updated.sync_mode == "transactions_only"
+
+
+@pytest.mark.asyncio
 async def test_update_bank_connected_type_override_clears_card_metadata(
     session: AsyncSession, test_user, test_workspace, test_connection
 ):

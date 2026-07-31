@@ -1168,6 +1168,63 @@ async def test_sync_connection_preserves_display_name(session: AsyncSession, tes
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("sync_mode", "expected_balance", "transaction_calls"),
+    [
+        ("full", Decimal("900"), 1),
+        ("balance_only", Decimal("900"), 0),
+        ("transactions_only", Decimal("100"), 1),
+        ("manual", Decimal("100"), 0),
+        ("excluded", Decimal("100"), 0),
+    ],
+)
+async def test_sync_connection_honors_account_sync_mode(
+    session: AsyncSession,
+    test_user,
+    test_workspace,
+    sync_mode,
+    expected_balance,
+    transaction_calls,
+):
+    conn = await _make_connection(session, test_user.id, f"Mode {sync_mode}")
+    account = Account(
+        user_id=test_user.id,
+        connection_id=conn.id,
+        external_id=f"mode-{sync_mode}",
+        name="Original",
+        type="checking",
+        balance=Decimal("100"),
+        currency="BRL",
+        sync_mode=sync_mode,
+    )
+    session.add(account)
+    await session.commit()
+
+    mock_provider = AsyncMock()
+    mock_provider.refresh_credentials = AsyncMock(return_value={"token": "t"})
+    mock_provider.get_accounts = AsyncMock(return_value=[
+        AccountData(
+            external_id=f"mode-{sync_mode}",
+            name="Updated",
+            type="checking",
+            balance=Decimal("900"),
+            currency="BRL",
+        ),
+    ])
+    mock_provider.get_transactions = AsyncMock(return_value=[])
+
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         patch("app.services.connection_service.detect_transfer_pairs", new_callable=AsyncMock), \
+         patch("app.services.connection_service.stamp_primary_amount", new_callable=AsyncMock), \
+         patch("app.services.connection_service.apply_rules_to_transaction", new_callable=AsyncMock):
+        await sync_connection(session, conn.id, test_workspace.id, test_user.id)
+
+    await session.refresh(account)
+    assert account.balance == expected_balance
+    assert mock_provider.get_transactions.await_count == transaction_calls
+
+
+@pytest.mark.asyncio
 async def test_sync_connection_does_not_recreate_closed_accounts(
     session: AsyncSession, test_user, test_workspace,
 ):

@@ -517,6 +517,21 @@
     "displayNameHint": "Substitui o nome padrão do provedor em todo o sistema.",
     "typeOverrideHint": "Substitui o tipo de conta informado pelo seu banco. A sincronização não reverte.",
     "accountType": "Tipo",
+    "syncMode": "Comportamento da conta corrente",
+    "syncModes": {
+      "full": "Sincronização completa",
+      "balance_only": "Somente saldo",
+      "transactions_only": "Somente transações",
+      "manual": "Manual",
+      "excluded": "Excluir do planejamento"
+    },
+    "syncModeDescriptions": {
+      "full": "Sincroniza saldo e transações quando os dados do provedor são confiáveis.",
+      "balance_only": "Mantém o saldo bancário atualizado, mas ignora transações importadas.",
+      "transactions_only": "Importa transações, mas preserva o saldo informado por você.",
+      "manual": "Não atualiza esta conta pelo banco. Use lançamentos recorrentes manuais.",
+      "excluded": "Não sincroniza nem inclui a conta no planejamento de fluxo de caixa."
+    },
     "currency": "Moeda",
     "typeChecking": "Conta Corrente",
     "typeSavings": "Poupança",
@@ -1178,6 +1193,16 @@
     "earlyEstimate": "Estimativa inicial — há menos de 60 dias de histórico.",
     "useMyPlan": "Usar meu plano",
     "forecastSetup": "Configuração da projeção",
+    "actualLayer": "Histórico realizado",
+    "committedLayer": "Comprometido",
+    "estimatedLayer": "Estimado",
+    "forecastWarnings_one": "{{count}} alerta nos dados da projeção",
+    "forecastWarnings_other": "{{count}} alertas nos dados da projeção",
+    "confidence": {
+      "actual": "Realizado",
+      "committed": "Comprometido",
+      "estimated": "Estimado"
+    },
     "myPlanSource": "Com base nas regras recorrentes ativas e nas transações futuras já lançadas.",
     "managePlan": "Gerenciar plano",
     "includedAccounts": "Contas incluídas",

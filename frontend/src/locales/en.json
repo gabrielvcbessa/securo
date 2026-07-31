@@ -517,6 +517,21 @@
     "displayNameHint": "Overrides the default provider name everywhere in the app.",
     "typeOverrideHint": "Overrides the account type reported by your bank. Syncs won't change it back.",
     "accountType": "Type",
+    "syncMode": "Checking account behavior",
+    "syncModes": {
+      "full": "Full sync",
+      "balance_only": "Balance only",
+      "transactions_only": "Transactions only",
+      "manual": "Manual",
+      "excluded": "Exclude from planning"
+    },
+    "syncModeDescriptions": {
+      "full": "Sync balance and transactions. Best when the provider data is reliable.",
+      "balance_only": "Keep the bank balance current but ignore imported transactions.",
+      "transactions_only": "Import transactions but preserve the balance you entered.",
+      "manual": "Do not update this account from the bank. Use manual recurring entries.",
+      "excluded": "Do not sync or include this account in forward cash-flow planning."
+    },
     "currency": "Currency",
     "typeChecking": "Checking",
     "typeSavings": "Savings",
@@ -1178,6 +1193,16 @@
     "earlyEstimate": "Early estimate — less than 60 days of history is available.",
     "useMyPlan": "Use my plan",
     "forecastSetup": "Forecast setup",
+    "actualLayer": "Actual history",
+    "committedLayer": "Committed",
+    "estimatedLayer": "Estimated",
+    "forecastWarnings_one": "{{count}} forecast data warning",
+    "forecastWarnings_other": "{{count}} forecast data warnings",
+    "confidence": {
+      "actual": "Actual",
+      "committed": "Committed",
+      "estimated": "Estimated"
+    },
     "myPlanSource": "Built from your active recurring rules and already-booked future transactions.",
     "managePlan": "Manage plan",
     "includedAccounts": "Included accounts",

@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import select, func, case, or_
+from sqlalchemy import and_, select, func, case, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -69,7 +69,10 @@ async def _get_recurring_projections(
             RecurringTransaction.is_active == True,
             or_(
                 RecurringTransaction.account_id.is_(None),
-                Account.is_closed == False,
+                and_(
+                    Account.is_closed == False,
+                    Account.sync_mode != "excluded",
+                ),
             ),
             RecurringTransaction.start_date < month_end,
             or_(

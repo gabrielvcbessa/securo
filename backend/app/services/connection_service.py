@@ -1204,6 +1204,8 @@ async def sync_connection(
             # active account (issue #90).
             if account and account.is_closed:
                 continue
+            if account and account.sync_mode in {"manual", "excluded"}:
+                continue
 
             if account:
                 # Normalize the provider sign using the account's CURRENT type,
@@ -1212,9 +1214,10 @@ async def sync_connection(
                 # label; once the user overrides the type to credit_card the
                 # downstream sites negate it, so store positive-for-debt to keep
                 # them provider-agnostic and avoid double-counting.
-                account.balance = _simplefin_to_internal_balance(
-                    connection.provider, account.type, acc_data.balance
-                )
+                if account.sync_mode != "transactions_only":
+                    account.balance = _simplefin_to_internal_balance(
+                        connection.provider, account.type, acc_data.balance
+                    )
                 account.name = acc_data.name
                 # Backfills existing accounts on their next sync. Only written
                 # when the provider actually returns an identifier, so a payload
@@ -1268,6 +1271,8 @@ async def sync_connection(
             bills_by_external_id = await _sync_credit_card_bills(
                 session, user_id, account, provider, credentials
             )
+            if account.sync_mode == "balance_only":
+                continue
 
             # Fetch and sync transactions. The 14-day rewind is on Pluggy's
             # `createdAt` (when their row was inserted), so it covers two
@@ -1470,7 +1475,8 @@ async def sync_connection(
 
             # Reconcile the opening balance after any new transactions land so
             # SUM(all txs) keeps matching account.balance from the provider.
-            await sync_opening_balance_for_connected_account(session, account)
+            if account.sync_mode == "full":
+                await sync_opening_balance_for_connected_account(session, account)
 
         # Detect transfer pairs among newly synced transactions
         if new_tx_ids:

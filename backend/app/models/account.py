@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, SmallInteger, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Numeric, SmallInteger, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,12 @@ if TYPE_CHECKING:
 
 class Account(Base):
     __tablename__ = "accounts"
+    __table_args__ = (
+        CheckConstraint(
+            "sync_mode IN ('full', 'balance_only', 'transactions_only', 'manual', 'excluded')",
+            name="ck_accounts_sync_mode",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -45,6 +51,8 @@ class Account(Base):
     # Migration 066 marks legacy archived accounts as excluded; new archive
     # actions explicitly persist the user's choice.
     exclude_from_history: Mapped[bool] = mapped_column(Boolean, default=False)
+    # full | balance_only | transactions_only | manual | excluded
+    sync_mode: Mapped[str] = mapped_column(String(32), default="full")
 
     connection: Mapped[Optional["BankConnection"]] = relationship(back_populates="accounts")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account", cascade="all, delete-orphan")

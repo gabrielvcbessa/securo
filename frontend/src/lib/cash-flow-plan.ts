@@ -33,6 +33,9 @@ export interface CashFlowDisplayMovement {
   sourceKey: string
   accountName: string
   itemCount: number
+  confidence: CashFlowProjectionItem['confidence']
+  installmentNumber: number | null
+  totalInstallments: number | null
 }
 
 export function groupCashFlowMovements(
@@ -60,6 +63,9 @@ export function groupCashFlowMovements(
       sourceKey: projectionSourceKey(item),
       accountName: item.account_name,
       itemCount: 1,
+      confidence: item.confidence,
+      installmentNumber: item.installment_number,
+      totalInstallments: item.total_installments,
     })
   }
 

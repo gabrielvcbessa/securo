@@ -27,6 +27,7 @@ from app.services.fx_rate_service import convert
 from app.schemas.report import (
     CashFlowProjectionItem,
     CategoryTrendItem,
+    ForecastWarning,
     ReportBreakdown,
     ReportCompositionItem,
     ReportDataPoint,
@@ -1042,6 +1043,7 @@ async def _get_baseline_projection(
         .where(
             Transaction.workspace_id == workspace_id,
             Account.is_closed == False,
+            Account.sync_mode != "excluded",
             Transaction.date <= today,
             Transaction.source != "opening_balance",
             counts_as_pnl(),
@@ -1064,6 +1066,7 @@ async def _get_baseline_projection(
         .where(
             Transaction.workspace_id == workspace_id,
             Account.is_closed == False,
+            Account.sync_mode != "excluded",
             Transaction.date >= window_start,
             Transaction.date <= today,
             Transaction.source != "opening_balance",
@@ -1145,10 +1148,19 @@ async def get_cash_flow_report(
     from app.services.dashboard_service import _balance_at, _get_recurring_projections
     from app.services.fx_rate_service import get_rate
 
-    acct_filter = [Transaction.account_id.in_(account_ids)] if account_ids is not None else []
     today = date.today()
     end = _add_months(today, months)
     chart_start = _add_months(today, -_PAST_HISTORY_MONTHS)
+
+    planning_accounts_stmt = select(Account.id).where(
+        Account.workspace_id == workspace_id,
+        Account.is_closed == False,
+        Account.sync_mode != "excluded",
+    )
+    if account_ids is not None:
+        planning_accounts_stmt = planning_accounts_stmt.where(Account.id.in_(account_ids))
+    planning_account_ids = list((await session.scalars(planning_accounts_stmt)).all())
+    acct_filter = [Transaction.account_id.in_(planning_account_ids)]
 
     user = await session.get(User, user_id)
     primary_currency = user.primary_currency if user else get_settings().default_currency
@@ -1161,7 +1173,7 @@ async def get_cash_flow_report(
     # inside the past-history window can't introduce drift.
     current_balance = await _balance_at(
         session, workspace_id, today, primary_currency_hint=primary_currency,
-        account_ids=account_ids,
+        account_ids=planning_account_ids,
     )
 
     rate_cache: dict[str, Decimal] = {primary_currency: Decimal("1")}
@@ -1177,6 +1189,9 @@ async def get_cash_flow_report(
 
     flows: dict[date, dict[str, float]] = {}
     projection_items: list[CashFlowProjectionItem] = []
+    confidence_layers = {"actual": 0.0, "committed": 0.0, "estimated": 0.0}
+    forecast_warnings = []
+    installment_groups: dict[tuple, dict] = {}
 
     def _add_flow(d: date, amount: float, is_credit: bool) -> None:
         bucket = flows.setdefault(d, {"inflow": 0.0, "outflow": 0.0})
@@ -1216,6 +1231,7 @@ async def get_cash_flow_report(
         if amount_primary == 0:
             continue
         _add_flow(flow_date, abs(amount_primary), tx_type == "credit")
+        confidence_layers["actual"] += abs(amount_primary)
 
     # 1b. Future booked transactions whose cash impact is past today.
     booked_result = await session.execute(
@@ -1236,12 +1252,16 @@ async def get_cash_flow_report(
             Category.id,
             Category.name,
             Category.color,
+            Transaction.installment_number,
+            Transaction.total_installments,
+            Transaction.installment_purchase_date,
         )
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.workspace_id == workspace_id,
             Account.is_closed == False,
+            Account.sync_mode != "excluded",
             flow_date_col > today,
             flow_date_col <= end,
             Transaction.source != "opening_balance",
@@ -1267,6 +1287,9 @@ async def get_cash_flow_report(
             category_id,
             category_name,
             category_color,
+            installment_number,
+            total_installments,
+            installment_purchase_date,
         ) = row
         if amt_primary is not None:
             amount_primary = float(amt_primary)
@@ -1275,6 +1298,7 @@ async def get_cash_flow_report(
         if amount_primary == 0:
             continue
         _add_flow(flow_date, abs(amount_primary), tx_type == "credit")
+        confidence_layers["committed"] += abs(amount_primary)
         is_future_card_purchase = (
             accrual
             and account_type == "credit_card"
@@ -1297,7 +1321,34 @@ async def get_cash_flow_report(
             category_name=category_name,
             category_color=category_color,
             transaction_id=transaction_id,
+            origin=transaction_source,
+            effective_date=flow_date.isoformat(),
+            confidence="committed",
+            confidence_score=1.0 if transaction_source == "manual" else 0.95,
+            installment_number=installment_number,
+            total_installments=total_installments,
+            installment_purchase_date=(
+                installment_purchase_date.isoformat() if installment_purchase_date else None
+            ),
         ))
+        if installment_purchase_date and installment_number and total_installments:
+            key = (
+                account_id,
+                installment_purchase_date,
+                total_installments,
+                description,
+            )
+            group = installment_groups.setdefault(
+                key,
+                {
+                    "numbers": set(),
+                    "account_id": account_id,
+                    "transaction_id": transaction_id,
+                    "description": description,
+                    "total": total_installments,
+                },
+            )
+            group["numbers"].add(installment_number)
 
     # 2. Accrual mode: pending CC purchases (purchase date <= today, due
     #    date in the forward window) already reduced today's balance via the
@@ -1315,6 +1366,7 @@ async def get_cash_flow_report(
             .where(
                 Transaction.workspace_id == workspace_id,
                 Account.is_closed == False,
+                Account.sync_mode != "excluded",
                 Account.type == "credit_card",
                 Transaction.date <= today,
                 Transaction.effective_date > today,
@@ -1346,12 +1398,18 @@ async def get_cash_flow_report(
 
     if baseline:
         projections, baseline_lookback_days = await _get_baseline_projection(
-            session, workspace_id, today, end, primary_currency, _to_primary, account_ids,
+            session,
+            workspace_id,
+            today,
+            end,
+            primary_currency,
+            _to_primary,
+            planning_account_ids,
         )
     else:
         projections = await _get_recurring_projections(
             session, workspace_id, today + timedelta(days=1), end + timedelta(days=1),
-            account_ids,
+            planning_account_ids,
         )
 
     for proj in projections:
@@ -1364,11 +1422,13 @@ async def get_cash_flow_report(
         if amount_primary == 0:
             continue
         _add_flow(d, amount_primary, proj["type"] == "credit")
+        layer = "estimated" if baseline else "committed"
+        confidence_layers[layer] += abs(amount_primary)
 
         if not baseline:
             projection_items.append(CashFlowProjectionItem(
                 date=d.isoformat(),
-                description=proj["description"],
+                description=proj.get("description", "Historical average"),
                 amount=round(abs(float(proj["amount"])), 2),
                 amount_primary=round(abs(amount_primary), 2),
                 currency=proj["currency"],
@@ -1383,6 +1443,27 @@ async def get_cash_flow_report(
                 category_color=proj["category_color"],
                 recurring_id=proj["recurring_id"],
                 auto_generate=proj["auto_generate"],
+                origin="recurring_rule",
+                effective_date=d.isoformat(),
+                confidence="committed",
+                confidence_score=0.9 if proj["auto_generate"] else 0.8,
+            ))
+        else:
+            projection_items.append(CashFlowProjectionItem(
+                date=d.isoformat(),
+                description=proj.get("description", "Historical average"),
+                amount=round(abs(float(proj["amount"])), 2),
+                amount_primary=round(abs(amount_primary), 2),
+                currency=proj["currency"],
+                type=proj["type"],
+                source="baseline",
+                status="estimated",
+                account_name="Historical baseline",
+                account_type="estimate",
+                origin="historical_average",
+                effective_date=d.isoformat(),
+                confidence="estimated",
+                confidence_score=min(0.75, baseline_lookback_days / 365),
             ))
 
         cat_id = proj["category_id"]
@@ -1549,7 +1630,29 @@ async def get_cash_flow_report(
         baseline_active=baseline,
         baseline_lookback_days=baseline_lookback_days if baseline else None,
         credit_card_accounting_mode=accounting_mode,
+        confidence_layers={
+            key: round(value, 2) for key, value in confidence_layers.items()
+        },
     )
+
+    horizon_installments = max(1, months)
+    for group in installment_groups.values():
+        observed = group["numbers"]
+        latest = max(observed)
+        expected_end = min(group["total"], latest + horizon_installments)
+        missing = [number for number in range(latest + 1, expected_end + 1) if number not in observed]
+        if missing:
+            forecast_warnings.append(ForecastWarning(
+                code="INSTALLMENTS_NOT_REPORTED",
+                message=(
+                    f"{group['description']} reports installment {latest}/{group['total']} "
+                    "but later installments are not present in the forecast"
+                ),
+                account_id=group["account_id"],
+                transaction_id=group["transaction_id"],
+                missing_installments=missing,
+            ))
+    meta.forecast_warnings = forecast_warnings
 
     composition: list[ReportCompositionItem] = []
     for (cat_key, group), info in cat_totals.items():
