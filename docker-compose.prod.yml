@@ -7,6 +7,12 @@ name: securo
 x-podman:
   in_pod: false
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-backend-env: &backend-env
   DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/securo}
   SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
@@ -66,7 +72,7 @@ x-backend-env: &backend-env
   AGENTS_EMBEDDING_MODEL: ${AGENTS_EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
 
 x-backend-base: &backend-base
-  image: ghcr.io/securo-finance/securo-backend:latest
+  image: ${SECURO_IMAGE_PREFIX:-ghcr.io/securo-finance}/securo-backend:${SECURO_IMAGE_TAG:-latest}
   environment: *backend-env
   depends_on:
     db: { condition: service_healthy }
@@ -77,11 +83,13 @@ x-backend-base: &backend-base
     - agent_knowledge:/app/data/agent_knowledge
     - agent_embedding_models:/app/data/embedding_models
   restart: unless-stopped
+  logging: *default-logging
 
 services:
   redis:
     image: docker.io/library/redis:7-alpine
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
@@ -94,6 +102,7 @@ services:
     # knowledge-base (RAG) migration introduced in v0.11.0.
     image: ${DB_IMAGE:-docker.io/pgvector/pgvector:pg16}
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -113,7 +122,7 @@ services:
       - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:${BACKEND_PORT:-8000}:8000"
 
   frontend:
-    image: ghcr.io/securo-finance/securo-frontend:latest
+    image: ${SECURO_IMAGE_PREFIX:-ghcr.io/securo-finance}/securo-frontend:${SECURO_IMAGE_TAG:-latest}
     ports:
       - "${FRONTEND_BIND_ADDRESS:-0.0.0.0}:${FRONTEND_PORT:-3000}:8080"
     environment:
@@ -122,6 +131,7 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    logging: *default-logging
 
   celery-worker:
     <<: *backend-base

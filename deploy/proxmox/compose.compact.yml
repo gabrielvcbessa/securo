@@ -1,0 +1,35 @@
+services:
+  redis:
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 96mb
+      - --maxmemory-policy
+      - allkeys-lru
+    mem_limit: 128m
+
+  db:
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - max_connections=50
+    mem_limit: 768m
+
+  backend:
+    mem_limit: 1g
+
+  frontend:
+    mem_limit: 192m
+
+  celery-worker:
+    command: celery -A app.worker worker --loglevel=info --concurrency=1
+    mem_limit: 768m
+
+  celery-beat:
+    mem_limit: 256m
