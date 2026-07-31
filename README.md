@@ -35,6 +35,9 @@ docker compose up --build
 
 Open [http://localhost:3000](http://localhost:3000) and create an account. That's it.
 
+For a production-style home-server deployment, see
+[Deploy Securo on Proxmox with TrueNAS backups](docs/proxmox-truenas.md).
+
 <p align="center">
   <img src="docs/screenshot.png" width="800" alt="Securo dashboard" />
 </p>
