@@ -133,10 +133,35 @@ Point `SECURO_SITE_ADDRESS` and `FRONTEND_URL` at the same HTTPS hostname.
 Caddy is the only published application service; backend, PostgreSQL, and
 Redis remain private to the Compose network.
 
-For a public DNS name, resolve it to the VM and forward TCP 80 and TCP/UDP 443.
-For a LAN-only install, use a trusted internal reverse proxy or Tailscale HTTPS.
-Do not use an untrusted Caddy internal CA on Android: the app will reject it
-unless its root certificate is installed on every device.
+Choose one trusted option:
+
+### Public or split-DNS hostname with Caddy
+
+Resolve the hostname to the VM and allow TCP 80 and TCP/UDP 443. The deployment
+script includes `compose.caddy.yml`; Caddy obtains and renews the certificate.
+On a LAN, split DNS can resolve the public hostname directly to the VM.
+
+### Private Tailscale HTTPS
+
+Join the VM and Android device to the same tailnet, enable MagicDNS and HTTPS
+certificates in Tailscale, and run on the VM:
+
+```bash
+sudo tailscale serve --bg https / http://127.0.0.1:3000
+```
+
+Set both URLs to the resulting `https://<machine>.<tailnet>.ts.net` name. When
+using Tailscale Serve, start the base and compact Compose files without the
+Caddy file:
+
+```bash
+docker compose --env-file .env --env-file .deploy-tag \
+  -f docker-compose.prod.yml -f deploy/proxmox/compose.compact.yml up -d
+```
+
+Do not expose backend port 8000, PostgreSQL, or Redis. Do not use an untrusted
+Caddy internal CA on Android: the app rejects it unless its root certificate
+is installed on every device.
 
 ## 6. Deploy an immutable build
 

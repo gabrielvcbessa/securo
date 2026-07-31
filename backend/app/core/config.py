@@ -2,7 +2,7 @@ from functools import lru_cache
 from os import getenv
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Use the same environment variable that systemd uses: https://systemd.io/CREDENTIALS/
@@ -15,6 +15,7 @@ CREDENTIALS_DIRECTORY: list[Path] = [
 class Settings(BaseSettings):
     # App
     app_name: str = "Securo"
+    app_env: str = "development"
     debug: bool = False
 
     # Database
@@ -120,6 +121,23 @@ class Settings(BaseSettings):
     tesouro_direto_enabled: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", secrets_dir=CREDENTIALS_DIRECTORY)
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.app_env.lower() != "production":
+            return self
+
+        secret = self.secret_key.get_secret_value()
+        if len(secret) < 32 or secret in {
+            "change-me-in-production",
+            "dev-secret-change-in-production",
+        }:
+            raise ValueError("SECRET_KEY must be an independent value of at least 32 characters")
+        if not self.frontend_url.startswith("https://"):
+            raise ValueError("FRONTEND_URL must use trusted HTTPS in production")
+        if "postgres:postgres@" in self.database_url:
+            raise ValueError("DATABASE_URL must not use the default PostgreSQL credentials")
+        return self
 
 
 @lru_cache
