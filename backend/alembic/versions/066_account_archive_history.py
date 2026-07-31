@@ -19,13 +19,19 @@ def upgrade() -> None:
     op.add_column(
         "accounts",
         sa.Column(
-            "exclude_from_reports",
+            "exclude_from_history",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.true(),
+            server_default=sa.false(),
         ),
+    )
+    op.execute(
+        sa.text(
+            "UPDATE accounts SET exclude_from_history = true "
+            "WHERE is_closed = true"
+        )
     )
 
 
 def downgrade() -> None:
-    op.drop_column("accounts", "exclude_from_reports")
+    op.drop_column("accounts", "exclude_from_history")

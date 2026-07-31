@@ -122,7 +122,7 @@ async def get_transactions(
     account_types: Optional[list[str]] = None,
     include_summary: bool = False,
     user_pnl_only: bool = False,
-    include_closed_accounts: bool = False,
+    include_excluded_history: bool = False,
 ) -> tuple[list[Transaction], int, Optional[dict]]:
     """List transactions for a workspace.
 
@@ -235,7 +235,7 @@ async def get_transactions(
     # Exclude opening_balance transactions from the normal list unless explicitly requested
     if not include_opening_balance:
         base_query = base_query.where(Transaction.source != "opening_balance")
-    if not include_closed_accounts:
+    if not include_excluded_history:
         base_query = base_query.where(account_history_is_visible())
 
     # Apply filters

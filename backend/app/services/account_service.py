@@ -158,7 +158,7 @@ def serialize_account(
         "previous_balance": float(previous_balance or 0),
         "is_closed": acc.is_closed,
         "closed_at": acc.closed_at,
-        "exclude_from_reports": acc.exclude_from_reports,
+        "exclude_from_history": acc.exclude_from_history,
         "credit_limit": float(acc.credit_limit) if acc.credit_limit is not None else None,
         "statement_close_day": acc.statement_close_day,
         "payment_due_day": acc.payment_due_day,
@@ -591,7 +591,7 @@ async def close_account(
 
     account.is_closed = True
     account.closed_at = datetime.now(timezone.utc)
-    account.exclude_from_reports = exclude_history
+    account.exclude_from_history = exclude_history
 
     # Keep `connection_id` intact for connected accounts so the sync loop in
     # connection_service can find the account by (connection_id, external_id)
@@ -616,7 +616,7 @@ async def reopen_account(
 
     account.is_closed = False
     account.closed_at = None
-    account.exclude_from_reports = False
+    account.exclude_from_history = False
 
     await session.commit()
     await session.refresh(account)

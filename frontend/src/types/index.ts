@@ -152,7 +152,7 @@ export interface Account {
   card_level: string | null
   is_closed: boolean
   closed_at: string | null
-  exclude_from_reports: boolean
+  exclude_from_history: boolean
 }
 
 export interface CreditCardBill {

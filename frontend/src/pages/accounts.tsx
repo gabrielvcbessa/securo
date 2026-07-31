@@ -524,7 +524,7 @@ export default function AccountsPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-muted-foreground truncate">{getAccountLabel(acc)}</p>
                           <p className="text-[11px] text-muted-foreground">
-                            {acc.exclude_from_reports
+                            {acc.exclude_from_history
                               ? t('accounts.historyExcluded')
                               : t('accounts.historyKept')}
                           </p>

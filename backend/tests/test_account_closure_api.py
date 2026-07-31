@@ -198,24 +198,36 @@ async def test_archive_can_keep_or_exclude_history_and_reopen_restores_it(
     assert transaction_resp.status_code == 201
     transaction_id = transaction_resp.json()["id"]
 
-    await client.post(f"/api/accounts/{account_id}/close", headers=auth_headers)
+    kept = await client.post(
+        f"/api/accounts/{account_id}/close",
+        headers=auth_headers,
+    )
+    assert kept.status_code == 200
+    assert kept.json()["exclude_from_history"] is False
 
     history = await client.get("/api/transactions", headers=auth_headers)
     assert transaction_id in {item["id"] for item in history.json()["items"]}
 
-    await client.post(f"/api/accounts/{account_id}/reopen", headers=auth_headers)
-    await client.post(
+    reopened = await client.post(
+        f"/api/accounts/{account_id}/reopen",
+        headers=auth_headers,
+    )
+    assert reopened.json()["exclude_from_history"] is False
+
+    excluded = await client.post(
         f"/api/accounts/{account_id}/close",
         params={"exclude_history": "true"},
         headers=auth_headers,
     )
+    assert excluded.status_code == 200
+    assert excluded.json()["exclude_from_history"] is True
 
     excluded_history = await client.get("/api/transactions", headers=auth_headers)
     assert transaction_id not in {item["id"] for item in excluded_history.json()["items"]}
 
     audit_history = await client.get(
         "/api/transactions",
-        params={"include_closed_accounts": "true"},
+        params={"include_excluded_history": "true"},
         headers=auth_headers,
     )
     assert transaction_id in {item["id"] for item in audit_history.json()["items"]}

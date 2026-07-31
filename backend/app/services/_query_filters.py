@@ -20,7 +20,7 @@ def account_history_is_visible():
     """Include open accounts and archived accounts whose history was retained."""
     return or_(
         Account.is_closed.is_(False),
-        Account.exclude_from_reports.is_(False),
+        Account.exclude_from_history.is_(False),
     )
 
 

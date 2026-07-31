@@ -2586,7 +2586,7 @@ async def test_archived_history_does_not_drive_baseline(
         date.today() - timedelta(days=10),
     )
     account.is_closed = True
-    account.exclude_from_reports = False
+    account.exclude_from_history = False
     await session.commit()
 
     baseline = await get_cash_flow_report(
